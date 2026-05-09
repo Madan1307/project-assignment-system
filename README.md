@@ -23,7 +23,7 @@ project-assignment-system/
 ├── README.md
 ├── db/
 │   ├── schema.sql        ← 5 tables
-│   ├── triggers.sql      ← (triggers removed — handled in app)
+│   ├── triggers.sql        ← triggers disabled (handled in backend instead)
 │   ├── views.sql         ← 3 views
 │   └── seed.sql          ← admin + 200 company members
 ├── server/
@@ -58,7 +58,7 @@ db/views.sql
 db/seed.sql
 ```
 
-> Note: No triggers are used. Task status updates are handled in the backend.
+> **Note:** Do NOT run `triggers.sql`. The triggers caused MySQL errors (`ER_CANT_UPDATE_USED_TABLE_IN_SF_OR_TRG`) and were replaced by backend logic. Task status updates (`submitted`, `scored`) are handled directly in the Express routes instead.
 
 ### 2. Install dependencies
 
