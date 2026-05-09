@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — Project Assignment System</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .logo h1 { font-size: 1.4rem; color: #1e293b; font-weight: 700; }
+    .logo p  { font-size: .85rem; color: #64748b; margin-top: .25rem; }
+
+    label { display: block; font-size: .85rem; font-weight: 600; color: #374151; margin-bottom: .35rem; }
+    input {
+      width: 100%; padding: .6rem .85rem;
+      border: 1.5px solid #e2e8f0; border-radius: 8px;
+      font-size: .95rem; outline: none; transition: border .2s;
+    }
+    input:focus { border-color: #6366f1; }
+
+    .field { margin-bottom: 1.1rem; }
+
+    button {
+      width: 100%; padding: .7rem;
+      background: #6366f1; color: #fff;
+      border: none; border-radius: 8px;
+      font-size: 1rem; font-weight: 600;
+      cursor: pointer; margin-top: .5rem;
+      transition: background .2s;
+    }
+    button:hover { background: #4f46e5; }
+    button:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+    .error {
+      background: #fee2e2; color: #991b1b;
+      border-radius: 8px; padding: .6rem .85rem;
+      font-size: .85rem; margin-bottom: 1rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <h1>📋 Project Assignment</h1>
+      <p>Sign in to continue</p>
+    </div>
+
+    <div class="error" id="error"></div>
+
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+
+    <button id="btn" onclick="login()">Sign In</button>
+  </div>
+
+  <script>
+    // If already logged in, redirect
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.role === 'admin') location.href = '/admin/projects';
+      else if (d.role === 'user') location.href = '/dashboard';
+    }).catch(() => {});
+
+    document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+
+    async function login() {
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl  = document.getElementById('error');
+      const btn      = document.getElementById('btn');
+
+      errorEl.style.display = 'none';
+
+      if (!email || !password) {
+        errorEl.textContent = 'Please enter your email and password.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+
+      try {
+        const res  = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorEl.textContent = data.error || 'Login failed.';
+          errorEl.style.display = 'block';
+        } else {
+          location.href = data.redirect;
+        }
+      } catch {
+        errorEl.textContent = 'Network error. Please try again.';
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    }
+  </script>
+</body>
+</html>

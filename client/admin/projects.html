@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — Project Assignment</title>
+  <link rel="stylesheet" href="/shared.css" />
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/admin/projects">📋 Project Assignment</a>
+  <div class="nav-right">
+    <span id="nav-name"></span>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+  </div>
+</nav>
+
+<main>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+    <h2>My Projects</h2>
+    <button class="btn btn-primary" onclick="toggleForm()">+ New Project</button>
+  </div>
+
+  <!-- Create project form -->
+  <div class="form-card" id="create-form" style="display:none;">
+    <h3>Create New Project</h3>
+    <div id="form-alert"></div>
+    <div class="field">
+      <label>Title</label>
+      <input type="text" id="f-title" placeholder="Project title" />
+    </div>
+    <div class="field">
+      <label>Description</label>
+      <textarea id="f-desc" placeholder="What is this project about?"></textarea>
+    </div>
+    <div class="field">
+      <label>Required Specialisation</label>
+      <input type="text" id="f-spec" placeholder="e.g. frontend, backend, design" />
+    </div>
+    <button class="btn btn-primary" id="create-btn" onclick="createProject()">Create Project</button>
+    <button class="btn" style="margin-left:.5rem;background:#f1f5f9;" onclick="toggleForm()">Cancel</button>
+  </div>
+
+  <div id="projects-container"></div>
+</main>
+
+<script>
+  let currentUser = null;
+
+  async function init() {
+    const me = await fetch('/api/auth/me').then(r => r.json());
+    if (!me.userId || me.role !== 'admin') { location.href = '/login'; return; }
+    currentUser = me;
+    document.getElementById('nav-name').textContent = me.name;
+    loadProjects();
+  }
+
+  async function loadProjects() {
+    const container = document.getElementById('projects-container');
+    container.innerHTML = '<p style="color:#94a3b8;">Loading…</p>';
+
+    const projects = await fetch('/api/admin/projects').then(r => r.json());
+
+    if (!projects.length) {
+      container.innerHTML = '<div class="empty"><div style="font-size:2.5rem;">📂</div><p>No projects yet. Create your first one!</p></div>';
+      return;
+    }
+
+    container.innerHTML = `<div class="card-grid">${projects.map(p => `
+      <div class="card" onclick="location.href='/admin/projects/${p.project_id}'">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;">
+          <h3>${esc(p.project_title)}</h3>
+          <span class="badge badge-${p.status}">${p.status}</span>
+        </div>
+        <p class="meta">Specialisation: ${esc(p.required_specialisation)}</p>
+        <div class="stats">
+          <div class="stat"><strong>${p.total_members || 0}</strong><span>Members</span></div>
+          <div class="stat"><strong>${p.tasks_pending || 0}</strong><span>Pending</span></div>
+          <div class="stat"><strong>${p.tasks_submitted || 0}</strong><span>Submitted</span></div>
+          <div class="stat"><strong>${p.tasks_scored || 0}</strong><span>Scored</span></div>
+        </div>
+      </div>
+    `).join('')}</div>`;
+  }
+
+  function toggleForm() {
+    const form = document.getElementById('create-form');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    document.getElementById('form-alert').innerHTML = '';
+  }
+
+  async function createProject() {
+    const title = document.getElementById('f-title').value.trim();
+    const desc  = document.getElementById('f-desc').value.trim();
+    const spec  = document.getElementById('f-spec').value.trim();
+    const alert = document.getElementById('form-alert');
+    const btn   = document.getElementById('create-btn');
+
+    alert.innerHTML = '';
+    if (!title || !spec) {
+      alert.innerHTML = '<div class="alert alert-error">Title and specialisation are required.</div>';
+      return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Creating…';
+
+    const res  = await fetch('/api/admin/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description: desc, required_specialisation: spec })
+    });
+    const data = await res.json();
+
+    btn.disabled = false; btn.textContent = 'Create Project';
+
+    if (!res.ok) {
+      alert.innerHTML = `<div class="alert alert-error">${data.error}</div>`;
+    } else {
+      toggleForm();
+      document.getElementById('f-title').value = '';
+      document.getElementById('f-desc').value  = '';
+      document.getElementById('f-spec').value  = '';
+      loadProjects();
+    }
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.href = '/login';
+  }
+
+  function esc(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  init();
+</script>
+</body>
+</html>

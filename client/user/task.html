@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task — Project Assignment</title>
+  <link rel="stylesheet" href="/shared.css" />
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/dashboard">📋 Project Assignment</a>
+  <div class="nav-right">
+    <span id="nav-name"></span>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+  </div>
+</nav>
+
+<main>
+  <a class="back" href="/dashboard">← Back to Dashboard</a>
+
+  <div id="task-container">
+    <p style="color:#94a3b8;">Loading…</p>
+  </div>
+</main>
+
+<script>
+  const taskId = location.pathname.split('/').pop();
+
+  async function init() {
+    const me = await fetch('/api/auth/me').then(r => r.json());
+    if (!me.userId || me.role !== 'user') { location.href = '/login'; return; }
+    document.getElementById('nav-name').textContent = me.name;
+    loadTask();
+  }
+
+  async function loadTask() {
+    const res = await fetch(`/api/user/tasks/${taskId}`);
+    if (!res.ok) { location.href = '/dashboard'; return; }
+    const task = await res.json();
+
+    document.title = `${task.title} — Project Assignment`;
+
+    const container = document.getElementById('task-container');
+
+    const isScored    = task.status === 'scored';
+    const isSubmitted = task.status === 'submitted';
+
+    container.innerHTML = `
+      <div style="margin-bottom:1.5rem;">
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem;">
+          <h2>${esc(task.title)}</h2>
+          <span class="badge badge-${task.status}">${task.status}</span>
+        </div>
+        <p style="font-size:.85rem;color:#64748b;">
+          Project: <strong>${esc(task.project_title)}</strong>
+        </p>
+      </div>
+
+      ${task.description ? `
+        <div class="form-card" style="margin-bottom:1.25rem;">
+          <h3>Task Description</h3>
+          <p style="font-size:.9rem;color:#334155;line-height:1.6;margin-top:.5rem;white-space:pre-wrap;">${esc(task.description)}</p>
+        </div>` : ''}
+
+      ${isScored ? `
+        <!-- Scored: show score banner + submitted work -->
+        <div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:12px;padding:1.25rem;margin-bottom:1.25rem;text-align:center;">
+          <p style="font-size:.85rem;color:#15803d;font-weight:600;margin-bottom:.3rem;">✅ Graded</p>
+          <p style="font-size:2.5rem;font-weight:800;color:#15803d;">${task.score}<span style="font-size:1rem;font-weight:400;">/100</span></p>
+        </div>
+        <div class="form-card">
+          <h3>Your Submission</h3>
+          <p style="font-size:.875rem;color:#334155;line-height:1.6;white-space:pre-wrap;margin-top:.5rem;">${esc(task.submitted_work)}</p>
+          <p style="font-size:.75rem;color:#94a3b8;margin-top:.75rem;">Submitted: ${new Date(task.submitted_at).toLocaleString()}</p>
+        </div>
+      ` : isSubmitted ? `
+        <!-- Submitted: waiting for score -->
+        <div style="background:#e0e7ff;border:1px solid #c7d2fe;border-radius:12px;padding:1rem;margin-bottom:1.25rem;text-align:center;">
+          <p style="font-size:.875rem;color:#4338ca;font-weight:600;">⏳ Submitted — waiting for admin to score</p>
+        </div>
+        <div class="form-card">
+          <h3>Your Submission</h3>
+          <p style="font-size:.875rem;color:#334155;line-height:1.6;white-space:pre-wrap;margin-top:.5rem;">${esc(task.submitted_work)}</p>
+          <p style="font-size:.75rem;color:#94a3b8;margin-top:.75rem;">Submitted: ${new Date(task.submitted_at).toLocaleString()}</p>
+        </div>
+      ` : `
+        <!-- Pending: submission form -->
+        <div class="form-card">
+          <h3>Submit Your Work</h3>
+          <div id="submit-alert"></div>
+          <div class="field" style="margin-top:.5rem;">
+            <label>Your Work</label>
+            <textarea id="work-content" placeholder="Write or paste your submission here…" style="min-height:160px;">${task.submitted_work ? esc(task.submitted_work) : ''}</textarea>
+          </div>
+          <button class="btn btn-primary" id="submit-btn" onclick="submitWork()">
+            ${task.submitted_work ? 'Update Submission' : 'Submit Work'}
+          </button>
+        </div>
+      `}
+    `;
+  }
+
+  async function submitWork() {
+    const content  = document.getElementById('work-content').value.trim();
+    const alertEl  = document.getElementById('submit-alert');
+    const btn      = document.getElementById('submit-btn');
+
+    alertEl.innerHTML = '';
+    if (!content) {
+      alertEl.innerHTML = '<div class="alert alert-error">Submission cannot be empty.</div>';
+      return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Submitting…';
+
+    const res  = await fetch(`/api/user/tasks/${taskId}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    const data = await res.json();
+
+    btn.disabled = false; btn.textContent = 'Submit Work';
+
+    if (!res.ok) {
+      alertEl.innerHTML = `<div class="alert alert-error">${data.error}</div>`;
+    } else {
+      alertEl.innerHTML = '<div class="alert alert-success">Work submitted successfully!</div>';
+      setTimeout(loadTask, 1200);
+    }
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.href = '/login';
+  }
+
+  function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  init();
+</script>
+</body>
+</html>

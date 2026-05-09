@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Detail — Project Assignment</title>
+  <link rel="stylesheet" href="/shared.css" />
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/admin/projects">📋 Project Assignment</a>
+  <div class="nav-right">
+    <span id="nav-name"></span>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+  </div>
+</nav>
+
+<main>
+  <a class="back" href="/admin/projects">← Back to Projects</a>
+
+  <div id="project-header" style="margin-bottom:1.5rem;">
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+      <h2 id="project-title">Loading…</h2>
+      <span class="badge" id="project-status-badge"></span>
+    </div>
+    <p id="project-meta" style="font-size:.85rem;color:#64748b;margin-top:.3rem;"></p>
+  </div>
+
+  <!-- Assign Task Form -->
+  <div class="form-card">
+    <h3>Assign New Task</h3>
+    <div id="task-alert"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
+      <div class="field">
+        <label>Task Title</label>
+        <input type="text" id="t-title" placeholder="e.g. Build login UI" />
+      </div>
+      <div class="field">
+        <label>Assign To</label>
+        <select id="t-member">
+          <option value="">— select member —</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Description</label>
+      <textarea id="t-desc" placeholder="What should the member do?"></textarea>
+    </div>
+    <button class="btn btn-primary" id="task-btn" onclick="createTask()">Assign Task</button>
+  </div>
+
+  <!-- Members & Tasks Table -->
+  <div id="table-container"></div>
+</main>
+
+<script>
+  const projectId = location.pathname.split('/').pop();
+  let allMembers = [];
+
+  async function init() {
+    const me = await fetch('/api/auth/me').then(r => r.json());
+    if (!me.userId || me.role !== 'admin') { location.href = '/login'; return; }
+    document.getElementById('nav-name').textContent = me.name;
+    loadDetail();
+  }
+
+  async function loadDetail() {
+    const res = await fetch(`/api/admin/projects/${projectId}`);
+    if (!res.ok) { location.href = '/admin/projects'; return; }
+    const { detail, members, availableMembers } = await res.json();
+
+    // All members available to assign tasks to = assigned + available by specialisation
+    allMembers = [...members];
+    // Add availableMembers not already in allMembers
+    for (const m of availableMembers) {
+      if (!allMembers.find(x => x.user_id === m.user_id)) {
+        allMembers.push(m);
+      }
+    }
+
+    if (detail.length > 0 || members.length === 0) {
+      const p = detail[0] || {};
+      const title = p.project_title || document.getElementById('project-title').textContent;
+      document.getElementById('project-title').textContent = title;
+      document.title = `${title} — Project Assignment`;
+
+      if (p.project_status) {
+        const badge = document.getElementById('project-status-badge');
+        badge.textContent = p.project_status;
+        badge.className = `badge badge-${p.project_status}`;
+      }
+
+      document.getElementById('project-meta').textContent =
+        `Admin: ${p.admin_name || 'You'}  ·  ${members.length} member${members.length !== 1 ? 's' : ''}`;
+    }
+
+    // Populate task assignment dropdown with ALL matching users
+    const sel = document.getElementById('t-member');
+    sel.innerHTML = '<option value="">— select member —</option>' +
+      allMembers.map(m => `<option value="${m.user_id}">${esc(m.name)} (${esc(m.specialisation)})</option>`).join('');
+
+    renderTable(detail, members);
+  }
+
+  function renderTable(detail, members) {
+    const container = document.getElementById('table-container');
+
+    if (!members.length) {
+      container.innerHTML = '<div class="empty"><div style="font-size:2rem;">👥</div><p>No tasks assigned yet. Use the form above to assign a task to a member.</p></div>';
+      return;
+    }
+
+    // Group by member
+    const byMember = {};
+    for (const row of detail) {
+      if (!row.member_id) continue;
+      if (!byMember[row.member_id]) byMember[row.member_id] = { ...row, tasks: [] };
+      if (row.task_id) byMember[row.member_id].tasks.push(row);
+    }
+
+    // Also add members who have no tasks yet
+    for (const m of members) {
+      if (!byMember[m.user_id]) {
+        byMember[m.user_id] = { member_id: m.user_id, member_name: m.name, specialisation: m.specialisation, tasks: [] };
+      }
+    }
+
+    container.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Specialisation</th>
+            <th>Task</th>
+            <th>Status</th>
+            <th>Submitted Work</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${Object.values(byMember).flatMap(member => {
+            if (!member.tasks.length) {
+              return [`<tr>
+                <td><strong>${esc(member.member_name)}</strong></td>
+                <td>${esc(member.specialisation)}</td>
+                <td colspan="4" style="color:#94a3b8;">No task assigned yet</td>
+              </tr>`];
+            }
+            return member.tasks.map((t, i) => `<tr>
+              ${i === 0 ? `<td rowspan="${member.tasks.length}"><strong>${esc(member.member_name)}</strong></td>
+                           <td rowspan="${member.tasks.length}">${esc(member.specialisation)}</td>` : ''}
+              <td>${esc(t.task_title)}</td>
+              <td><span class="badge badge-${t.task_status}">${t.task_status}</span></td>
+              <td style="max-width:220px;">
+                ${t.submitted_work
+                  ? `<div style="font-size:.8rem;color:#334155;max-height:60px;overflow:auto;white-space:pre-wrap;">${esc(t.submitted_work)}</div>`
+                  : '<span style="color:#94a3b8;font-size:.8rem;">Not submitted</span>'}
+              </td>
+              <td>
+                ${t.task_status === 'scored'
+                  ? `<strong style="color:#15803d;">${t.score}/100</strong>`
+                  : t.task_status === 'submitted'
+                    ? `<div class="score-form">
+                        <input type="number" id="score-${t.submission_id}" min="0" max="100" placeholder="0–100" />
+                        <button class="btn btn-primary btn-sm" onclick="saveScore(${t.submission_id})">Save</button>
+                       </div>`
+                    : '<span style="color:#94a3b8;font-size:.8rem;">—</span>'}
+              </td>
+            </tr>`);
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  async function createTask() {
+    const title    = document.getElementById('t-title').value.trim();
+    const memberId = document.getElementById('t-member').value;
+    const desc     = document.getElementById('t-desc').value.trim();
+    const alertEl  = document.getElementById('task-alert');
+    const btn      = document.getElementById('task-btn');
+
+    alertEl.innerHTML = '';
+    if (!title || !memberId) {
+      alertEl.innerHTML = '<div class="alert alert-error">Task title and member are required.</div>';
+      return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Saving…';
+
+    const res  = await fetch('/api/admin/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, assigned_to: memberId, title, description: desc })
+    });
+    const data = await res.json();
+
+    btn.disabled = false; btn.textContent = 'Assign Task';
+
+    if (!res.ok) {
+      alertEl.innerHTML = `<div class="alert alert-error">${data.error}</div>`;
+    } else {
+      document.getElementById('t-title').value = '';
+      document.getElementById('t-member').value = '';
+      document.getElementById('t-desc').value = '';
+      alertEl.innerHTML = '<div class="alert alert-success">Task assigned!</div>';
+      setTimeout(() => alertEl.innerHTML = '', 3000);
+      loadDetail();
+    }
+  }
+
+  async function saveScore(submissionId) {
+    const input = document.getElementById(`score-${submissionId}`);
+    const score = parseInt(input.value, 10);
+
+    if (isNaN(score) || score < 0 || score > 100) {
+      alert('Please enter a score between 0 and 100.');
+      return;
+    }
+
+    const res = await fetch(`/api/admin/submissions/${submissionId}/score`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ score })
+    });
+
+    if (res.ok) {
+      loadDetail();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Failed to save score.');
+    }
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.href = '/login';
+  }
+
+  function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  init();
+</script>
+</body>
+</html>

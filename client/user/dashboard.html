@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Dashboard — Project Assignment</title>
+  <link rel="stylesheet" href="/shared.css" />
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="/dashboard">📋 Project Assignment</a>
+  <div class="nav-right">
+    <span id="nav-name"></span>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+  </div>
+</nav>
+
+<main>
+  <h2>My Projects</h2>
+  <div id="projects-container"></div>
+</main>
+
+<script>
+  async function init() {
+    const me = await fetch('/api/auth/me').then(r => r.json());
+    if (!me.userId || me.role !== 'user') { location.href = '/login'; return; }
+    document.getElementById('nav-name').textContent = me.name;
+    loadProjects();
+  }
+
+  async function loadProjects() {
+    const container = document.getElementById('projects-container');
+    container.innerHTML = '<p style="color:#94a3b8;">Loading…</p>';
+
+    const rows = await fetch('/api/user/projects').then(r => r.json());
+
+    if (!rows.length) {
+      container.innerHTML = '<div class="empty"><div style="font-size:2.5rem;">🗂️</div><p>You haven\'t been assigned to any projects yet.</p></div>';
+      return;
+    }
+
+    // Group rows by project (view may return multiple rows per project for multiple tasks)
+    const projects = {};
+    for (const row of rows) {
+      if (!projects[row.project_id]) {
+        projects[row.project_id] = {
+          project_id:     row.project_id,
+          project_title:  row.project_title,
+          project_status: row.project_status,
+          admin_name:     row.admin_name,
+          admin_email:    row.admin_email,
+          tasks: []
+        };
+      }
+      if (row.task_id) {
+        projects[row.project_id].tasks.push(row);
+      }
+    }
+
+    container.innerHTML = `<div class="card-grid">
+      ${Object.values(projects).map(p => `
+        <div class="card" style="cursor:default;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.4rem;">
+            <h3>${esc(p.project_title)}</h3>
+            <span class="badge badge-${p.project_status}">${p.project_status}</span>
+          </div>
+
+          <p class="meta" style="margin-bottom:.75rem;">
+            👤 Admin: <strong>${esc(p.admin_name)}</strong>
+            &nbsp;·&nbsp;
+            <a href="mailto:${esc(p.admin_email)}" style="color:#6366f1;">${esc(p.admin_email)}</a>
+          </p>
+
+          ${p.tasks.length
+            ? `<div style="border-top:1px solid #f1f5f9;padding-top:.75rem;">
+                <p style="font-size:.75rem;font-weight:600;color:#94a3b8;margin-bottom:.5rem;">MY TASKS</p>
+                ${p.tasks.map(t => `
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid #f8fafc;">
+                    <a href="/task/${t.task_id}" style="font-size:.875rem;color:#1e293b;text-decoration:none;font-weight:500;flex:1;">
+                      ${esc(t.task_title)}
+                    </a>
+                    <div style="display:flex;align-items:center;gap:.5rem;flex-shrink:0;">
+                      ${t.score !== null ? `<span style="font-size:.8rem;font-weight:700;color:#15803d;">${t.score}/100</span>` : ''}
+                      <span class="badge badge-${t.task_status}">${t.task_status}</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>`
+            : `<p style="font-size:.8rem;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:.75rem;">No tasks assigned yet.</p>`
+          }
+        </div>
+      `).join('')}
+    </div>`;
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.href = '/login';
+  }
+
+  function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  init();
+</script>
+</body>
+</html>
